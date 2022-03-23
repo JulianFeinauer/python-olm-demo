@@ -4,68 +4,141 @@
             integrity="sha512-Y5n0fbohPllOQ21fTwM/h9sQQ/1a1h5KhweGhu2zwD8lAoJnTgVa7NIrFa1bRDIMQHixtyuRV2ubIx+qWbGdDA=="
             crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="olm/olm.js"></script>
+    <script src="https://unpkg.com/vue@3"></script>
 </head>
 <body>
-<script>
-    // client = new WebSocket("wss://julianfeinauer:drg_vBYwfh_PR9OxXSVHaodVSxu1FFEqIpUHiQNKP2xhNSR@websocket-integration-drogue-dev.apps.wonderful.iot-playground.org/e2e-demo", [])
-    //
-    // client.onopen = function(e) {
-    //   console.log("Opened...")
-    // };
-
-    var session
-
-    Olm.init().then(() => {
-        console.log("OLM Initialized")
-
-        ses = new Olm.OutboundGroupSession()
-        ses.create()
-
-        console.log(ses.session_key())
-        console.log(ses.message_index())
-
-        session = new Olm.InboundGroupSession()
-
-        // TODO Session data has to be entered here
-        session.create("AgAAAACnHp5+c878lXBRcGSf1TmXAIM+/Y2qZMJhJepA40zlrO5fgVfnMU7CwCzNQEgYE3iEFeFKiFzfC8hP/L1U3mBO2M4igr59q7YdJJvJb6nhKalWycgJmd7jctx01wXSqVeEmBHiu+GAmu/0z4XhP5YtycXtGF0vruVlxZB8/fkThZXaCtbZUG3YwKsQ+bhKP2OX7xxr7YuNpmRnTcyCDNnI6d5frrmsp4nBKgt4eZjajKegeHuNzcTl4QWA9IMAtBV1Ed/yImwhh4+xQQ1mx2H5rCrToQlSUQnd28UcyngfBw")
-    })
-
-
-
-    var client = new Paho.Client("mqtt-integration-ws-browser-drogue-dev.apps.wonderful.iot-playground.org", 443, "/mqtt", "clientId");
-
-    client.connect({
-        useSSL:true,
-        reconnect: true,
-        mqttVersion: 4,
-        userName: "julianfeinauer",
-        password: "drg_vBYwfh_PR9OxXSVHaodVSxu1FFEqIpUHiQNKP2xhNSR",
-        onSuccess: onConnect,
-        onFailure: onFailure
-    });
-
-    client.onMessageArrived = function(msg) {
-        let data = atob(JSON.parse(msg.payloadString).data_base64)
-        console.log("Message: ", data)
-        try {
-            let plaintext = session.decrypt(data)
-            console.log("Plaintext: ", plaintext.plaintext)
-        } catch (e) {
-            console.log("Error ", e)
-        }
-    };
-
-
-    function onFailure(e) {
-        console.log("Error: ", e)
-    }
-    // called when the client connects
-    function onConnect() {
-      // Once a connection has been made, make a subscription and send a message.
-      console.log("onConnect");
-      client.subscribe("app/e2e-demo");
-    }
-</script>
 <div id="messages"></div>
+<div id="app">
+    <div>
+        <input v-model="session_key" placeholder="edit me"/>
+        <button @click="updateSignature">Save</button>
+        <div>{{ sessionReady }} - {{ sessionStatus }}</div>
+    </div>
+    <div>
+        <input v-model="mqtt.username" placeholder="host"/>
+        <input v-model="mqtt.password" placeholder="host"/>
+        <input v-model="mqtt.host" placeholder="host"/>
+        <input v-model="mqtt.port" placeholder="port"/>
+        <input v-model="mqtt.path" placeholder="path"/>
+        <button @click="updateMqtt">Update</button>
+        <div>{{ mqtt.connected }}</div>
+    </div>
+    <div>
+        <ul v-for="msg in encryptedMessages">
+            <li>{{ msg }}</li>
+        </ul>
+        <ul v-for="msg in unencryptedMessages">
+            <li>{{ msg }}</li>
+        </ul>
+    </div>
+</div>
+<script>
+    Vue.createApp({
+        data() {
+            return {
+                olmReady: false,
+                session_key: "",
+                session: null,
+                sessionReady: false,
+                sessionStatus: "",
+                message: 'Hello Vue!',
+                count: 0,
+                unencryptedMessages: [],
+                encryptedMessages: [],
+                mqtt: {
+                    "username": "julianfeinauer",
+                    "password": "drg_vBYwfh_PR9OxXSVHaodVSxu1FFEqIpUHiQNKP2xhNSR",
+                    "host": "mqtt-integration-ws-browser-drogue-dev.apps.wonderful.iot-playground.org",
+                    "port": 443,
+                    "path": "/mqtt",
+                    "client": {},
+                    "connected": false
+                },
+            }
+        },
+        methods: {
+            updateSignature(event) {
+                if (!this.olmReady) {
+                    console.error("Olm not ready yet!")
+                    return
+                }
+                console.log("Got new sig: ", this.session_key)
+                let session = new Olm.InboundGroupSession()
+                try {
+                    session.create(this.session_key)
+
+                    this.session = session
+                    this.sessionReady = true
+                    this.sessionStatus = "good"
+
+                    // Unencrypt messages
+                    while (this.unencryptedMessages.length > 0) {
+                        let msg = this.unencryptedMessages.pop()
+
+                        let plaintext = this.session.decrypt(msg)
+                        this.encryptedMessages.unshift(plaintext.plaintext)
+                    }
+
+                } catch (e) {
+                    this.session = null
+                    this.sessionReady = false
+                    this.sessionStatus = e
+                }
+
+
+            },
+            onConnect() {
+                console.log("Mqtt Connected")
+                this.mqtt.connected = true
+                this.mqtt.client.subscribe("app/e2e-demo");
+            },
+            onFailure(event) {
+                console.log("Mqtt Connection Failed")
+                this.mqtt.connected = false
+            },
+            onDisconnected(response) {
+                console.log("Mqtt Disconnected")
+                this.mqtt.connected = false
+            },
+            onMessageArrived(msg) {
+                console.log("Received Message")
+                let data = atob(JSON.parse(msg.payloadString).data_base64)
+                console.log("Message: ", data)
+                if (this.session === null || !this.sessionReady) {
+                    this.unencryptedMessages.unshift(data)
+                    return
+                }
+                try {
+                    let plaintext = this.session.decrypt(data)
+                    this.encryptedMessages.unshift(plaintext.plaintext)
+                } catch (e) {
+                    this.unencryptedMessages.unshift(data)
+                }
+            },
+            updateMqtt(event) {
+                console.log("Restart MQTT")
+                this.mqtt.client = new Paho.Client("mqtt-integration-ws-browser-drogue-dev.apps.wonderful.iot-playground.org", 443, "/mqtt", "clientId");
+                this.mqtt.client.onConnectionLost = this.onDisconnected
+                this.mqtt.client.onMessageArrived = this.onMessageArrived
+                this.mqtt.client.connect({
+                    useSSL: true,
+                    reconnect: true,
+                    mqttVersion: 4,
+                    userName: this.mqtt.username,
+                    password: this.mqtt.password,
+                    onSuccess: this.onConnect,
+                    onFailure: this.onFailure
+                });
+
+            }
+        },
+        created: function () {
+            console.log("I am creatd...")
+            Olm.init().then(() => {
+              this.olmReady = true
+            })
+        }
+    }).mount('#app')
+</script>
 </body>
 </html>
