@@ -1,0 +1,18 @@
+<html>
+<head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"
+            integrity="sha512-Y5n0fbohPllOQ21fTwM/h9sQQ/1a1h5KhweGhu2zwD8lAoJnTgVa7NIrFa1bRDIMQHixtyuRV2ubIx+qWbGdDA=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+<script>
+    client = new WebSocket("wss://julianfeinauer:drg_vBYwfh_PR9OxXSVHaodVSxu1FFEqIpUHiQNKP2xhNSR@websocket-integration-drogue-dev.apps.wonderful.iot-playground.org/e2e-demo", [])
+
+    client.onopen = function(e) {
+      console.log("Opened...")
+    };
+
+</script>
+<div id="messages"></div>
+</body>
+</html>
